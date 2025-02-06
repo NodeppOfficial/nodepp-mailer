@@ -1,5 +1,18 @@
+/*
+ * Copyright 2023 The Nodepp Project Authors. All Rights Reserved.
+ *
+ * Licensed under the MIT (the "License").  You may not use
+ * this file except in compliance with the License.  You can obtain a copy
+ * in the file LICENSE in the source distribution or at
+ * https://github.com/NodeppOficial/nodepp/blob/main/LICENSE
+ */
+
+/*────────────────────────────────────────────────────────────────────────────*/
+
 #ifndef NODEPP_MAIL
 #define NODEPP_MAIL
+
+/*────────────────────────────────────────────────────────────────────────────*/
 
 #include <nodepp/encoder.h>
 #include <nodepp/socket.h>
@@ -7,9 +20,12 @@
 #include <nodepp/dns.h>
 #include <nodepp/url.h>
 
+/*────────────────────────────────────────────────────────────────────────────*/
+
 namespace nodepp {
 
     enum AUTH_TYPE {
+         MAIL_AUTH_LOGIN,
          MAIL_AUTH_PLAIN,
          MAIL_AUTH_OAUTH
     };
@@ -25,6 +41,8 @@ namespace nodepp {
     }; 
 
 }
+
+/*────────────────────────────────────────────────────────────────────────────*/
 
 namespace nodepp { class mail_t {
 protected:
@@ -43,14 +61,22 @@ protected:
         result.status = string::to_int( data.slice(0,3) );
         result.message= data.slice(4).get(); return result;
     }
+    
+    /*─······································································─*/
+
+    void init() const {
+        auto header = read_header(); if( header.status==0 ){
+            process::error("something went wrong");
+        } elif( header.status >= 400 ) { 
+            process::error("Can't connect to the server");
+        }
+    }
+    
+    /*─······································································─*/
 
     void handshake() const {
 
-        auto header = read_header(); if( header.status >= 400 ){ 
-            process::error("Can't connect to the server");
-        }
-
-        push("EHLO nodepp-mail");
+        push("EHLO nodepp-mail"); mail_header_t header;
 
         header = read_header();  if ( header.status <  400 )
         { obj->extd=1; return; } if ( header.status >= 500 ){ 
@@ -65,13 +91,15 @@ protected:
         }
 
     }
+    
+    /*─······································································─*/
 
     void tls() const {
         if( obj->ctx.get_ctx() == nullptr ){ return; }
         push("STARTTLS"); auto header = read_header();
-        
+
         if( header.status >= 500 ){
-            process::error("auth pass not accepted");
+            process::error("SSL connection not allowed");
         } elif( header.status >= 400 ) { return; }
 
         obj->ssl = ssl_t( obj->ctx, obj->fd.get_fd() ); 
@@ -80,24 +108,41 @@ protected:
         if( obj->ssl.connect() <= 0 )
           { process::error("Error while handshaking TLS"); }
 
-        obj->tlsl = 1;
+        obj->tlsl = 1; handshake();
+    }
+    
+    /*─······································································─*/
+
+    void auth_login( mail_auth_t& auth ) const {
+        push( "AUTH LOGIN" ); 
+        push( encoder::base64::get(auth.user) );
+        push( encoder::base64::get(auth.pass) );
+        auto header = read_header(); if( header.status >= 400 ){
+             process::error("auth pass not accepted");
+        }
     }
 
     void auth_plain( mail_auth_t& auth ) const {
-        auto pass = encoder::base64::get(
-            string::format("\0%s\0%s",auth.user.get(),auth.pass.get())
-        );  push( string::format("AUTH PLAIN %s", pass.get() ) );
+        string_t pass = encoder::base64::get( regex::format(
+            "${0}${2}${1}${2}", auth.user, auth.pass,
+             type::cast<char>( 0x00 )
+        ));  push( "AUTH PLAIN "+ pass );
         auto header = read_header(); if( header.status >= 400 ){
              process::error("auth pass not accepted");
         }
     }
 
     void auth_oauth( mail_auth_t& auth ) const {
-        push( string::format("AUTH XOAUTH2 %s", auth.pass.get() ) );
+        string_t pass = encoder::base64::get( regex::format(
+            "user=${0}${2}auth=Bearer ${1}${2}${2}",
+             auth.user, auth.pass, type::cast<char>(0x01)
+        ));  push( string::format("AUTH XOAUTH2 %s", pass.get() ) );
         auto header = read_header(); if( header.status >= 400 ){
              process::error("auth pass not accepted");
         }
     }
+    
+    /*─······································································─*/
 
     void mail_from( string_t email ) const {
         push( string::format("MAIL FROM: <%s>", email.get() ) );
@@ -118,14 +163,20 @@ protected:
              process::error("auth pass not accepted");
         }    write( message ); push("<CR><LF>.<CR><LF>");
     }
+    
+    /*─······································································─*/
 
 public:
+    
+    /*─······································································─*/
 
    ~mail_t () {
         if( obj.count() > 1 ){ return; }
         if( obj->state == 0 ){ return; }
         free();
     }
+    
+    /*─······································································─*/
 
     mail_t ( string_t uri ) : obj( new NODE ){
 
@@ -135,7 +186,7 @@ public:
         auto prs = url::parse( uri );
 
         obj->fd = socket_t();
-        obj->fd.IPPTOTO= IPPROTO_TCP;
+        obj->fd.IPPROTO= IPPROTO_TCP;
         obj->hostname = prs.hostname;
         obj->fd.socket( dns::lookup(prs.hostname), prs.port );
 
@@ -154,7 +205,7 @@ public:
 
         obj->ctx = *ssl;
         obj->fd  = socket_t();
-        obj->fd.IPPTOTO= IPPROTO_TCP;
+        obj->fd.IPPROTO= IPPROTO_TCP;
         obj->hostname = prs.hostname;
         obj->fd.socket( dns::lookup(prs.hostname), prs.port );
 
@@ -166,10 +217,13 @@ public:
         }
 
     }
+    
+    /*─······································································─*/
 
     int send ( mail_auth_t auth, string_t email, string_t subject, string_t msg ) const {
     coStart
-        handshake(); if ( obj->extd ){ tls(); } switch ( auth.type ) {
+        init();handshake(); if( obj->extd ){ tls(); } switch ( auth.type ) {
+            case MAIL_AUTH_LOGIN: auth_login( auth ); break;
             case MAIL_AUTH_PLAIN: auth_plain( auth ); break;
             case MAIL_AUTH_OAUTH: auth_oauth( auth ); break;
             default: process::error("AUTH NOT SUPPORTED"); break; 
@@ -187,6 +241,8 @@ public:
         } while ( state==-2 ); if( state>0 ){ data += state;   }
         } while ( state>=0 && data<message.size() ); return state;
     }
+    
+    /*─······································································─*/
 
     int push( string_t message ) const noexcept { return write( message + "\n" ); }
 
@@ -198,6 +254,8 @@ public:
             if ( state < 0 && state != -2 ){ return nullptr; }
         } while( state == -2 ); return string_t ( buffer.get(), state );
     }
+    
+    /*─······································································─*/
 
     void close() const noexcept {
         if( !obj->fd.is_available() ){ return; }
@@ -211,4 +269,8 @@ public:
 
 };}
 
+/*────────────────────────────────────────────────────────────────────────────*/
+
 #endif
+
+/*────────────────────────────────────────────────────────────────────────────*/

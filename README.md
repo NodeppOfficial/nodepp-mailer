@@ -11,12 +11,12 @@ using namespace nodepp;
 
 void onMain() {
 
-    ssl_t ssl ( "./ssl/cert.key", "./ssl/cert.crt" );
+    ssl_t ssl;//( "./ssl/cert.key", "./ssl/cert.crt" );
     mail_t mail ( "smtp://smtp.gmail.com:587", &ssl );
 
     mail_auth_t auth = {
-        .user = "bececrazy2@gmail.com",
-        .pass = "MyGmailPassword",
+        .user = "user@gmail.com",
+        .pass = "password",
         .type = MAIL_AUTH_OAUTH
     };
 
