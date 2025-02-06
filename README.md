@@ -1,4 +1,4 @@
-# NODEPP-MAIL
+# NODEPP-MAILER
 Run a simple **SMTP Client** in Nodepp
 
 ## Example
