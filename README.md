@@ -5,7 +5,7 @@ Run a simple **SMTP Client** in Nodepp
 ```cpp
 #include <nodepp/nodepp.h>
 #include <nodepp/ssl.h>
-#include "mail.h"
+#include <mailer/mailer.h>
 
 using namespace nodepp;
 
@@ -20,7 +20,7 @@ void onMain() {
         .type = MAIL_AUTH_OAUTH
     };
 
-    mail.send( auth, "becerracenmanueld@gmail.com", "subject", "Hello World!" );
+    mail.send( auth, "subject@gmail.com", "subject", "Hello World!" );
 
 }
 ```
