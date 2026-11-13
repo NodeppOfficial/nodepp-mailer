@@ -1,21 +1,26 @@
 #include <nodepp/nodepp.h>
-#include <nodepp/ssl.h>
-#include "mail.h"
+#include <mailer/mailer.h>
 
 using namespace nodepp;
 
 void onMain() {
 
-    ssl_t ssl ( "./ssl/cert.key", "./ssl/cert.crt" );
-    mail_t mail ( "smtp://smtp.gmail.com:587", &ssl );
+    auto mail = mailer::add( "smtp://smtp.gmail.com:587" );
 
     mail_auth_t auth = {
-        .user = "bececrazy2",
-        .pass = "0123456789",
-        .serv = "google.com",
-        .type = AUTH_PLAIN
+        .user = "user@gmail.com",
+        .pass = "password",
+        .type = MAILER::MAIL_AUTH_OAUTH
     };
 
-    mail.send( auth, "becerracenmanueld@gmail.com", "tarea", "hola mundo!" );
+    mail.emit( auth, "subject@gmail.com", "subject", "Hello World!" )
+
+    .then([=]( string_t msg ){
+        console::log( "done" );
+    })
+
+    .fail([=]( except_t err ){
+        console::error( "->", err.what() );
+    });
 
 }
